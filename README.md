@@ -195,19 +195,19 @@ The diagram below illustrates the data flow from ingestion through to the Data W
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          DATA ARCHITECTURE OVERVIEW                        │
+│                          DATA ARCHITECTURE OVERVIEW                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 
   ┌──────────────┐       ┌──────────────┐       ┌──────────────────────────┐
   │   Client /   │       │   FastAPI    │       │       PokeAPI            │
-  │   Consumer   │──────▶│   Service    │──────▶│ /api/v2/ability/{id}     │
+  │   Consumer   │──────▶│   Service    │──────▶│ /api/v2/ability/{id}    │
   │              │       │              │◀──────│                          │
   └──────────────┘       └──────┬───────┘       └──────────────────────────┘
                                 │
                     Normalized effect_entries
                                 │
                                 ▼
-  ┌─────────────────────────────────────────────────────────────────────────┐
+  ┌────────────────────────────────────────────────────────────────────────┐
   │                     1. STAGING ENVIRONMENT                             │
   │                                                                        │
   │  ┌────────────────────────────────────────────────────────────────┐    │
@@ -215,7 +215,7 @@ The diagram below illustrates the data flow from ingestion through to the Data W
   │  │                                                                │    │
   │  │  - id (PK)                                                     │    │
   │  │  - raw_id              ← request identifier                    │    │
-  │  │  - user_id             ← user identifier                      │    │
+  │  │  - user_id             ← user identifier                       │    │
   │  │  - pokemon_ability_id  ← ability ID                            │    │
   │  │  - effect              ← raw effect text                       │    │
   │  │  - language            ← language code                         │    │
@@ -226,13 +226,13 @@ The diagram below illustrates the data flow from ingestion through to the Data W
   │                                                                        │
   │  Purpose: Landing zone for raw data. No transformations applied.       │
   │  Data is appended as-is from each API call.                            │
-  └────────────────────────────────┬────────────────────────────────────────┘
+  └────────────────────────────────┬───────────────────────────────────────┘
                                    │
                         Cleanse, deduplicate,
                         validate & conform
                                    │
                                    ▼
-  ┌─────────────────────────────────────────────────────────────────────────┐
+  ┌────────────────────────────────────────────────────────────────────────┐
   │                 2. OPERATIONAL DATA STORE (ODS)                        │
   │                                                                        │
   │  ┌────────────────────────────────────────────────────────────────┐    │
@@ -263,13 +263,13 @@ The diagram below illustrates the data flow from ingestion through to the Data W
   │                                                                        │
   │  Purpose: Current-state, deduplicated, relationally normalized data.   │
   │  Supports operational queries and application reads.                   │
-  └────────────────────────────────┬────────────────────────────────────────┘
+  └────────────────────────────────┬───────────────────────────────────────┘
                                    │
                         Aggregate, model into
                         star schema for analytics
                                    │
                                    ▼
-  ┌─────────────────────────────────────────────────────────────────────────┐
+  ┌────────────────────────────────────────────────────────────────────────┐
   │                    3. DATA WAREHOUSE (DWH)                             │
   │                                                                        │
   │  ┌────────────────────────────────────────────────────────────────┐    │
@@ -297,7 +297,7 @@ The diagram below illustrates the data flow from ingestion through to the Data W
   │  └────────────────────────────────────────────────────────────────┘    │
   │                                                                        │
   │  ┌────────────────────────────────────────────────────────────────┐    │
-  │  │  fact_ability_requests  (Fact)                                  │    │
+  │  │  fact_ability_requests  (Fact)                                 │    │
   │  │  - request_key (PK, surrogate)                                 │    │
   │  │  - ability_key (FK → dim_ability)                              │    │
   │  │  - user_key (FK → dim_user)                                    │    │
@@ -311,29 +311,29 @@ The diagram below illustrates the data flow from ingestion through to the Data W
   │  Purpose: Star schema optimized for analytical queries.                │
   │  Supports reporting on ability usage, language distribution,           │
   │  and user activity patterns.                                           │
-  └─────────────────────────────────────────────────────────────────────────┘
+  └────────────────────────────────────────────────────────────────────────┘
 
-  ┌─────────────────────────────────────────────────────────────────────────┐
+  ┌────────────────────────────────────────────────────────────────────────┐
   │                         DATA FLOW SUMMARY                              │
   │                                                                        │
   │  Client Request                                                        │
   │       │                                                                │
   │       ▼                                                                │
-  │  FastAPI ──▶ PokeAPI (fetch ability data)                              │
+  │  FastAPI ──▶ PokeAPI (fetch ability data)                             │
   │       │                                                                │
   │       ▼                                                                │
   │  Normalize effect_entries                                              │
   │       │                                                                │
-  │       ├──▶ Staging (raw append, no transforms)                         │
+  │       ├──▶ Staging (raw append, no transforms)                        │
   │       │         │                                                      │
   │       │         ▼                                                      │
-  │       │    ODS (cleanse, deduplicate, normalize relations)              │
+  │       │    ODS (cleanse, deduplicate, normalize relations)             │
   │       │         │                                                      │
   │       │         ▼                                                      │
   │       │    DWH (aggregate into star schema for analytics)              │
   │       │                                                                │
-  │       └──▶ JSON Response to Client                                     │
-  └─────────────────────────────────────────────────────────────────────────┘
+  │       └──▶ JSON Response to Client                                    │
+  └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
