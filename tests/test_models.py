@@ -1,9 +1,11 @@
-from app.models import EffectEntry
+from app.models import insert_effect_entry, query_all_effect_entries, TABLE_NAME
 
 
 class TestEffectEntryModel:
-    def test_create_and_query(self, db_session):
-        entry = EffectEntry(
+    def test_create_and_query(self, db_connection):
+        cursor = db_connection.cursor()
+        insert_effect_entry(
+            cursor,
             raw_id="abc1234567890",
             user_id="1234567",
             pokemon_ability_id="150",
@@ -11,22 +13,26 @@ class TestEffectEntryModel:
             language="en",
             short_effect="Test short effect",
         )
-        db_session.add(entry)
-        db_session.commit()
+        db_connection.commit()
 
-        result = db_session.query(EffectEntry).first()
-        assert result is not None
-        assert result.raw_id == "abc1234567890"
-        assert result.user_id == "1234567"
-        assert result.pokemon_ability_id == "150"
-        assert result.effect == "Test effect description"
-        assert result.language == "en"
-        assert result.short_effect == "Test short effect"
-        assert result.id is not None
+        rows = query_all_effect_entries(cursor)
+        cursor.close()
 
-    def test_multiple_entries(self, db_session):
-        entries = [
-            EffectEntry(
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["raw_id"] == "abc1234567890"
+        assert row["user_id"] == "1234567"
+        assert row["pokemon_ability_id"] == "150"
+        assert row["effect"] == "Test effect description"
+        assert row["language"] == "en"
+        assert row["short_effect"] == "Test short effect"
+        assert row["id"] is not None
+
+    def test_multiple_entries(self, db_connection):
+        cursor = db_connection.cursor()
+        for i in range(3):
+            insert_effect_entry(
+                cursor,
                 raw_id="abc1234567890",
                 user_id="1234567",
                 pokemon_ability_id="150",
@@ -34,13 +40,12 @@ class TestEffectEntryModel:
                 language="en",
                 short_effect=f"Short {i}",
             )
-            for i in range(3)
-        ]
-        db_session.add_all(entries)
-        db_session.commit()
+        db_connection.commit()
 
-        results = db_session.query(EffectEntry).all()
-        assert len(results) == 3
+        rows = query_all_effect_entries(cursor)
+        cursor.close()
+
+        assert len(rows) == 3
 
     def test_table_name(self):
-        assert EffectEntry.__tablename__ == "effect_entries"
+        assert TABLE_NAME == "effect_entries"

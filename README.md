@@ -1,6 +1,6 @@
 # Pokemon Ability API
 
-A FastAPI application that processes Pokemon ability data by fetching from [PokeAPI](https://pokeapi.co/), normalizing `effect_entries`, storing them in PostgreSQL, and returning a structured JSON response.
+A FastAPI application that processes Pokemon ability data by fetching from [PokeAPI](https://pokeapi.co/), normalizing `effect_entries`, storing them in **PostgreSQL**, and returning a structured JSON response. Uses **raw SQL** (psycopg2) with no ORM.
 
 ---
 
@@ -10,7 +10,7 @@ A FastAPI application that processes Pokemon ability data by fetching from [Poke
 - [Project Structure](#project-structure)
 - [How to Run](#how-to-run)
   - [Option 1: Docker Compose (Recommended)](#option-1-docker-compose-recommended)
-  - [Option 2: Local Development with Virtual Environment](#option-2-local-development-with-virtual-environment)
+  - [Option 2: Local Development](#option-2-local-development)
 - [API Usage](#api-usage)
 - [Database Schema](#database-schema)
 - [Data Architecture](#data-architecture)
@@ -20,8 +20,7 @@ A FastAPI application that processes Pokemon ability data by fetching from [Poke
 ## Prerequisites
 
 - **Python 3.9+** (3.10 recommended)
-- **Docker & Docker Compose** (for containerized setup)
-- **PostgreSQL 15** (if running locally without Docker)
+- **Docker & Docker Compose** (required for PostgreSQL database)
 
 ---
 
@@ -32,16 +31,25 @@ flip/
 ├── app/
 │   ├── __init__.py          # Package initializer
 │   ├── config.py            # Environment variable configuration
-│   ├── database.py          # SQLAlchemy engine, session, and Base
+│   ├── database.py          # Raw SQL connection management and table creation
 │   ├── main.py              # FastAPI app, endpoints, and business logic
-│   ├── models.py            # SQLAlchemy ORM model (effect_entries table)
+│   ├── models.py            # Raw SQL helpers for effect_entries table
 │   ├── schemas.py           # Pydantic request/response schemas
 │   └── utils.py             # Helper functions (ID generation)
+├── tests/
+│   ├── __init__.py          # Package initializer
+│   ├── conftest.py          # Pytest fixtures and test configuration
+│   ├── test_api_e2e.py      # End-to-end API tests
+│   ├── test_health.py       # Health endpoint tests
+│   ├── test_models.py       # Raw SQL model helper tests
+│   ├── test_schemas.py      # Pydantic schema tests
+│   └── test_utils.py        # Utility function tests
 ├── .env                     # Environment variables (DATABASE_URL)
+├── .env.example             # Example environment variables template
 ├── .gitignore               # Git ignore rules
 ├── docker-compose.yml       # Docker Compose for API + PostgreSQL
 ├── Dockerfile               # Container image for FastAPI app
-├── NEW_INSTRUCTION.md       # Original task instructions
+├── pytest.ini               # Pytest configuration
 ├── requirements.txt         # Python dependencies
 └── README.md                # This file
 ```
@@ -52,7 +60,7 @@ flip/
 
 ### Option 1: Docker Compose (Recommended)
 
-This spins up both the FastAPI app and PostgreSQL in containers.
+This spins up both the FastAPI app and PostgreSQL in containers. No local setup needed beyond Docker.
 
 ```bash
 # Build and start all services
@@ -61,6 +69,14 @@ docker-compose up --build
 # The API will be available at http://localhost:8000
 # Swagger docs at http://localhost:8000/docs
 ```
+
+The Docker Compose configuration automatically sets the internal database URL:
+
+```
+DATABASE_URL=postgresql://postgres:postgres@db:5432/pokemon_db
+```
+
+PostgreSQL is exposed on **port 5433** on the host to avoid conflicts with any local PostgreSQL instance.
 
 To stop:
 
@@ -74,9 +90,19 @@ To stop and remove database volume:
 docker-compose down -v
 ```
 
-### Option 2: Local Development with Virtual Environment
+### Option 2: Local Development
 
-**1. Create and activate virtual environment:**
+Run the FastAPI app locally while using the PostgreSQL database from Docker.
+
+**1. Start the PostgreSQL database:**
+
+```bash
+docker-compose up -d db
+```
+
+This starts only the PostgreSQL container (exposed on `localhost:5433`).
+
+**2. Create and activate virtual environment:**
 
 ```bash
 # Create virtual environment
@@ -89,26 +115,18 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-**2. Install dependencies:**
+**3. Install dependencies:**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**3. Set up PostgreSQL:**
-
-Make sure PostgreSQL is running locally. Create the database:
-
-```sql
-CREATE DATABASE pokemon_db;
-```
-
 **4. Configure environment:**
 
-Edit `.env` to point to your local database:
+The default `.env` is already configured to connect to the Docker PostgreSQL:
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pokemon_db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/pokemon_db
 ```
 
 **5. Run the application:**
@@ -118,6 +136,16 @@ uvicorn app.main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`. Interactive Swagger docs at `http://localhost:8000/docs`.
+
+**6. Run the tests:**
+
+Make sure the PostgreSQL container is running (`docker-compose up -d db`), then:
+
+```bash
+pytest tests/ -v
+```
+
+Tests run against a separate `pokemon_test_db` database that is automatically created. The table is dropped and recreated between each test to ensure isolation.
 
 ---
 
@@ -179,7 +207,7 @@ Health check endpoint. Returns `{"status": "healthy"}`.
 
 | Column               | Type         | Description                                      |
 |----------------------|--------------|--------------------------------------------------|
-| `id`                 | INTEGER (PK) | Auto-incrementing primary key                    |
+| `id`                 | SERIAL (PK)  | Auto-incrementing primary key                    |
 | `raw_id`             | VARCHAR(13)  | Request identifier (provided or auto-generated)  |
 | `user_id`            | VARCHAR(7)   | User identifier (provided or auto-generated)     |
 | `pokemon_ability_id` | VARCHAR(10)  | Pokemon ability ID from the request              |

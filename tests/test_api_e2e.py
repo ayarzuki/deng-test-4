@@ -1,12 +1,21 @@
 """End-to-end tests that hit the real PokeAPI and verify the full flow."""
 
-from app.models import EffectEntry
+import psycopg2
+
+from app.models import query_all_effect_entries, query_effect_entries_by_ability
+
+TEST_DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/pokemon_test_db"
+
+
+def _read_connection():
+    """Separate connection to read data written by the endpoint."""
+    return psycopg2.connect(TEST_DATABASE_URL)
 
 
 class TestPokemonAbilityEndpointE2E:
     """E2E tests against the real PokeAPI (requires internet)."""
 
-    def test_full_flow_with_provided_ids(self, client, db_session):
+    def test_full_flow_with_provided_ids(self, client, db_connection):
         """Test: send request with raw_id & user_id, verify response + DB storage."""
         payload = {
             "raw_id": "7dsa8d7sa9dsa",
@@ -38,19 +47,24 @@ class TestPokemonAbilityEndpointE2E:
             assert isinstance(name, str)
             assert len(name) > 0
 
-        # Verify data was stored in database
-        db_entries = db_session.query(EffectEntry).all()
+        # Verify data was stored in database (use separate connection to read committed data)
+        conn = _read_connection()
+        cursor = conn.cursor()
+        db_entries = query_all_effect_entries(cursor)
+        cursor.close()
+        conn.close()
+
         assert len(db_entries) == len(data["returned_entries"])
 
         for db_entry in db_entries:
-            assert db_entry.raw_id == "7dsa8d7sa9dsa"
-            assert db_entry.user_id == "5199434"
-            assert db_entry.pokemon_ability_id == "150"
-            assert db_entry.effect is not None
-            assert db_entry.language is not None
-            assert db_entry.short_effect is not None
+            assert db_entry["raw_id"] == "7dsa8d7sa9dsa"
+            assert db_entry["user_id"] == "5199434"
+            assert db_entry["pokemon_ability_id"] == "150"
+            assert db_entry["effect"] is not None
+            assert db_entry["language"] is not None
+            assert db_entry["short_effect"] is not None
 
-    def test_full_flow_auto_generated_ids(self, client, db_session):
+    def test_full_flow_auto_generated_ids(self, client, db_connection):
         """Test: send request without raw_id & user_id, verify they are generated."""
         payload = {"pokemon_ability_id": "1"}
 
@@ -71,10 +85,15 @@ class TestPokemonAbilityEndpointE2E:
         assert len(data["pokemon_list"]) > 0
 
         # Verify DB storage
-        db_entries = db_session.query(EffectEntry).all()
+        conn = _read_connection()
+        cursor = conn.cursor()
+        db_entries = query_all_effect_entries(cursor)
+        cursor.close()
+        conn.close()
+
         assert len(db_entries) == len(data["returned_entries"])
 
-    def test_ability_with_known_data(self, client, db_session):
+    def test_ability_with_known_data(self, client, db_connection):
         """Test ability ID 1 (stench) - a well-known ability with stable data."""
         payload = {
             "raw_id": "testknown1234",
@@ -113,7 +132,7 @@ class TestPokemonAbilityEndpointE2E:
 
         assert response.status_code == 422
 
-    def test_multiple_requests_accumulate_in_db(self, client, db_session):
+    def test_multiple_requests_accumulate_in_db(self, client, db_connection):
         """Test: multiple requests should all be stored independently."""
         for ability_id in ["1", "2"]:
             payload = {"pokemon_ability_id": ability_id}
@@ -121,16 +140,12 @@ class TestPokemonAbilityEndpointE2E:
             assert response.status_code == 200
 
         # Verify both requests stored entries
-        entries_ability_1 = (
-            db_session.query(EffectEntry)
-            .filter(EffectEntry.pokemon_ability_id == "1")
-            .all()
-        )
-        entries_ability_2 = (
-            db_session.query(EffectEntry)
-            .filter(EffectEntry.pokemon_ability_id == "2")
-            .all()
-        )
+        conn = _read_connection()
+        cursor = conn.cursor()
+        entries_ability_1 = query_effect_entries_by_ability(cursor, "1")
+        entries_ability_2 = query_effect_entries_by_ability(cursor, "2")
+        cursor.close()
+        conn.close()
 
         assert len(entries_ability_1) > 0
         assert len(entries_ability_2) > 0

@@ -1,9 +1,8 @@
 import httpx
 from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
-from app.models import EffectEntry
+from app.database import create_tables, get_db
+from app.models import insert_effect_entry
 from app.schemas import PokemonAbilityRequest, PokemonAbilityResponse, ReturnedEntry
 from app.utils import generate_raw_id, generate_user_id
 
@@ -18,13 +17,19 @@ POKEAPI_BASE_URL = "https://pokeapi.co/api/v2/ability"
 
 @app.on_event("startup")
 def on_startup():
-    Base.metadata.create_all(bind=engine)
+    from app.database import get_connection_factory
+
+    conn = get_connection_factory()()
+    try:
+        create_tables(conn)
+    finally:
+        conn.close()
 
 
 @app.post("/pokemon-ability", response_model=PokemonAbilityResponse)
 async def process_pokemon_ability(
     request: PokemonAbilityRequest,
-    db: Session = Depends(get_db),
+    conn=Depends(get_db),
 ):
     raw_id = request.raw_id or generate_raw_id()
     user_id = request.user_id or generate_user_id()
@@ -44,6 +49,7 @@ async def process_pokemon_ability(
 
     # Normalize effect_entries
     returned_entries = []
+    cursor = conn.cursor()
     for entry in api_data.get("effect_entries", []):
         normalized = ReturnedEntry(
             effect=entry["effect"],
@@ -56,7 +62,8 @@ async def process_pokemon_ability(
         returned_entries.append(normalized)
 
         # Store in database
-        db_entry = EffectEntry(
+        insert_effect_entry(
+            cursor,
             raw_id=raw_id,
             user_id=user_id,
             pokemon_ability_id=ability_id,
@@ -64,9 +71,9 @@ async def process_pokemon_ability(
             language=entry["language"]["name"],
             short_effect=entry["short_effect"],
         )
-        db.add(db_entry)
 
-    db.commit()
+    conn.commit()
+    cursor.close()
 
     # Extract pokemon list
     pokemon_list = [
